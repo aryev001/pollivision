@@ -1,0 +1,35 @@
+# Cucumis sativus - cucumber.
+# Much smaller corolla than pumpkin, borne in clusters; the ovary of a
+# pistillate flower already looks like a miniature spiny cucumber.
+species:
+  name: cucumber
+  corolla_diameter_m: 0.030
+  anther_diameter_m: 0.007
+  ovary_length_m: 0.030
+  standoff_range_m: [0.015, 0.050]
+detector:
+  prompts:
+    flower:
+      - a small yellow cucumber flower
+      - a small bright yellow star shaped flower on a vine
+  fusion:
+    score_threshold: 0.10
+perception:
+  quality:
+    min_box_px: 18
+    # A cucumber corolla is smaller and less deeply lobed than a pumpkin's.
+    petal_lobe_allowance: 0.12
+  sex:
+    morphology:
+      min_width_ratio: 0.30
+      # A cucumber ovary is elongated rather than round, so allow it to exceed
+      # the corolla width.
+      max_width_ratio: 1.60
+      min_solidity: 0.65
+geometry:
+  ranging:
+    size_sigma_frac: 0.28
+electrostatic:
+  reference:
+    voltage_kv: 4.5
+    standoff_m: 0.025

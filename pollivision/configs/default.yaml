@@ -1,0 +1,364 @@
+# PolliVision default configuration.
+#
+# Every threshold a field technician might retune lives here rather than in
+# Python. Species-specific overlays live in configs/species/, camera-specific
+# overlays in configs/esp32cam.yaml.
+
+meta:
+  name: pollivision-default
+  description: Adaptive vision-guided electrostatic pollination rover perception stack.
+
+# --------------------------------------------------------------------------- #
+# Camera
+# --------------------------------------------------------------------------- #
+camera:
+  name: rgbd-head
+  width: 640
+  height: 480
+  hfov_deg: 62.0          # used only when fx is absent
+  fx: null                # set by `pollivision calibrate` for metric accuracy
+  fy: null
+  cx: null
+  cy: null
+  distortion: null
+
+# Camera pose on the rover: forward-facing, tilted down toward ground-level
+# flowers, mounted 0.35 m ahead of the drive centre at 0.30 m height.
+extrinsics:
+  pitch_deg: -20.0
+  yaw_deg: 0.0
+  roll_deg: 0.0
+  offset_m: [0.35, 0.0, 0.30]
+
+# --------------------------------------------------------------------------- #
+# Detection
+# --------------------------------------------------------------------------- #
+detector:
+  backends:
+    - name: yoloe
+      weights: yoloe-11s-seg
+      enabled: true
+      weight: 1.0          # contribution to box fusion
+      conf: 0.10
+      iou: 0.60
+      imgsz: 640
+      max_det: 60
+    - name: yolo_world
+      weights: yolov8s-worldv2.pt
+      enabled: false       # needs an OpenAI-CLIP text encoder; off by default
+      weight: 0.7
+      conf: 0.10
+    - name: owlv2
+      weights: google/owlv2-base-patch16-ensemble
+      enabled: false       # model-hub backend, enable when the hub is reachable
+      weight: 0.8
+      conf: 0.12
+    - name: finetuned
+      weights: null        # point at your trained .pt to add a supervised expert
+      enabled: false
+      weight: 1.5
+      conf: 0.25
+
+  fusion:
+    method: wbf           # weighted box fusion across backends
+    iou_threshold: 0.55
+    score_threshold: 0.12
+    require_votes: 1      # raise to 2 to demand agreement between backends
+
+  # Open-vocabulary prompt bank. Each entry maps free-text prompts onto one of
+  # the canonical roles the pipeline understands. Distractor prompts are kept
+  # deliberately: giving the detector an explicit "leaf" class markedly reduces
+  # false positives on sunlit foliage compared with prompting for flowers alone.
+  prompts:
+    flower:
+      - a yellow squash flower
+      - a large yellow trumpet shaped flower
+      - a yellow pumpkin blossom
+      - an open yellow flower on a vine
+    bud:
+      - an unopened yellow flower bud
+      - a closed flower bud on a vine
+    ovary:
+      - a small green immature fruit at the base of a flower
+      - a small green gourd behind a yellow flower
+    distractor:
+      - a green leaf
+      - a vine stem
+      - soil and mulch
+      - a ripe fruit
+
+# --------------------------------------------------------------------------- #
+# Vision-language model used for fine-grained cue scoring
+# --------------------------------------------------------------------------- #
+vlm:
+  enabled: true
+  weights: mobileclip-blt
+  batch_size: 16
+  crop_scale: 1.6         # context crop around the corolla...
+  crop_bias_down: 0.55    # ...pushed downward so the inferior ovary is visible
+  temperature: 100.0      # CLIP logit scale for softmax over a prompt set
+
+# --------------------------------------------------------------------------- #
+# Perception heads
+# --------------------------------------------------------------------------- #
+perception:
+  # Sex classification (Sec. III-C). Three independent cues are fused in
+  # log-odds space; weights are the relative trust placed in each.
+  sex:
+    enabled: true
+    weights:
+      vlm: 1.0            # zero-shot prompt scoring on a context crop
+      morphology: 1.4     # geometric search for an inferior ovary
+      detector: 1.1       # an explicit ovary detection adjacent to the corolla
+      probe: 1.6          # optional trained linear probe, when present
+    decision_threshold: 0.5
+    min_confidence: 0.25
+    probe_path: null      # set by `pollivision train-probe`
+    prompts:
+      female:
+        - a female squash flower with a small round green immature fruit below the petals
+        - a pistillate flower with a swollen green ovary at its base
+        - a yellow flower growing on top of a small green gourd
+      male:
+        - a male squash flower on a long thin straight stem
+        - a staminate flower with a slender stalk and no fruit at its base
+        - a yellow flower with a bare thin stem below the petals
+    morphology:
+      search_scale: 1.9        # how far below the corolla to look for an ovary
+      min_width_ratio: 0.22    # ovary width relative to corolla diameter
+      max_width_ratio: 0.95
+      min_solidity: 0.72       # ovaries are convex; leaves and stems are not
+      min_green_fraction: 0.35
+      # HSV gate for immature cucurbit fruit: green, reasonably saturated.
+      hue_range: [30, 95]
+      min_saturation: 45
+      min_value: 30
+
+  # Anthesis / receptivity staging. Cucurbit flowers open for a single morning,
+  # so acting only on RECEPTIVE flowers is what keeps the actuation budget sane.
+  anthesis:
+    enabled: true
+    prompts:
+      bud: ["a closed unopened yellow flower bud", "a tight green and yellow bud"]
+      opening: ["a partially open yellow flower", "a flower beginning to unfurl"]
+      receptive: ["a fully open bright yellow flower with flat spread petals",
+                  "a wide open fresh yellow blossom"]
+      senescent: ["a wilted shrivelled yellow flower", "a collapsed dried orange flower",
+                  "a closed spent flower turning brown"]
+    # Geometric corroboration of the VLM: an open corolla is round and convex.
+    min_circularity_receptive: 0.55
+    min_saturation_fresh: 60
+    vlm_weight: 1.0
+    geometry_weight: 0.6
+
+  # Pollen availability on a male anther (Sec. III-E-iii). Feeds the controller.
+  pollen:
+    enabled: true
+    inner_radius_ratio: 0.45     # inner disc of the corolla holding the anther
+    petal_ring_ratio: 0.80       # reference annulus for the petal colour baseline
+    # Anthers read as a deeper, more saturated orange-yellow than the petals.
+    hue_range: [14, 42]
+    min_saturation: 110
+    min_value: 90
+    saturation_margin: 25        # anther must exceed the petal baseline by this
+    granularity_scale: 400.0     # normaliser for Laplacian texture energy
+    weights:
+      area: 1.0
+      granularity: 0.6
+      chroma: 0.8
+      vlm: 0.9
+    prompts:
+      loaded: ["a flower anther heavily coated in bright yellow pollen",
+               "a stamen covered in fresh golden pollen grains"]
+      depleted: ["a bare flower anther with no pollen",
+                 "an empty stamen stripped of pollen"]
+
+  # Stigma localisation on female flowers: the deposition aiming point.
+  stigma:
+    enabled: true
+    inner_radius_ratio: 0.40
+    hue_range: [18, 45]
+    min_saturation: 90
+
+  # Quality gate (Sec. III-C: "filtered to remove partially occluded or
+  # low-confidence detections").
+  quality:
+    min_score: 0.20
+    min_box_px: 24               # smaller than this and the cues are unreliable
+    max_truncation: 0.18         # fraction of the box clipped by the frame edge
+    max_occlusion: 0.45          # fraction of the corolla covered by foliage
+    min_sharpness: 0.12          # normalised Laplacian variance
+    min_exposure: 0.35
+    max_clipped_fraction: 0.25   # blown highlights inside the corolla
+    require_receptive: true
+    # Convexity deficit attributable to normal petal lobing rather than to
+    # occlusion. Cucurbit corollas are deeply lobed, so a clean flower is never
+    # convex; only the excess over this counts as something covering it. Raise
+    # it if obviously clear flowers are rejected as occluded.
+    petal_lobe_allowance: 0.15
+
+# --------------------------------------------------------------------------- #
+# Depth, ranging and orientation
+# --------------------------------------------------------------------------- #
+geometry:
+  depth:
+    # rgbd  : use a real depth channel (report baseline)
+    # size  : monocular range from apparent corolla size (ESP32-CAM default)
+    # midas : monocular relative depth, scale-anchored by size priors
+    # auto  : rgbd if a depth frame is supplied, else size (+ midas if enabled)
+    mode: auto
+    midas:
+      enabled: false
+      weights: midas-small
+      input_size: 256
+    valid_range_m: [0.05, 3.0]
+    depth_patch_percentile: 35   # robust depth over the corolla mask
+  ranging:
+    # Ranging uses the *major* axis of the fitted corolla ellipse. Foreshortening
+    # compresses only the minor axis, so the major axis stays proportional to the
+    # true corolla diameter regardless of tilt - which makes this estimate
+    # tilt-invariant, unlike bounding-box-diagonal heuristics.
+    use_major_axis: true
+    size_sigma_frac: 0.30        # 1-sigma spread of corolla diameter within a species
+  orientation:
+    min_axis_ratio: 0.15         # below this the ellipse fit is unreliable
+    use_depth_normal: true       # refine with a plane fit over the corolla mask
+    depth_normal_min_points: 60
+    max_tilt_deg: 75.0
+
+# --------------------------------------------------------------------------- #
+# Species priors. Selected with `--species`; see configs/species/.
+# --------------------------------------------------------------------------- #
+species:
+  name: pumpkin
+  corolla_diameter_m: 0.10
+  anther_diameter_m: 0.018
+  ovary_length_m: 0.045
+  # Practical standoff window for the electrostatic probe on this crop.
+  standoff_range_m: [0.02, 0.08]
+
+# --------------------------------------------------------------------------- #
+# Tracking
+# --------------------------------------------------------------------------- #
+tracking:
+  enabled: true
+  max_age: 15               # frames a track survives without a match
+  min_hits: 2               # frames before a track is reported as confirmed
+  iou_threshold: 0.25
+  max_centre_distance_px: 120
+  smoothing:
+    # Temporal smoothing is where a shaky rover on a noisy sensor wins back a
+    # lot of accuracy: per-frame cue noise averages out over a track.
+    sex_alpha: 0.35
+    pollen_alpha: 0.4
+    stage_votes: 5
+
+ledger:
+  enabled: true
+  revisit_cooldown_s: 900   # do not re-target a flower pollinated this recently
+  max_attempts: 3
+  persist_path: null        # set a path to survive restarts
+
+# --------------------------------------------------------------------------- #
+# Target selection and approach planning (Sec. III-D)
+# --------------------------------------------------------------------------- #
+planning:
+  weights:
+    receptivity: 2.0
+    quality: 1.2
+    proximity: 1.0
+    pollen_need: 1.5      # prefers a loaded male when the probe is empty
+    centrality: 0.4       # prefers targets near the image centre (less steering)
+    occlusion_penalty: 1.4
+  max_range_m: 1.2
+  min_range_m: 0.05
+  approach_standoff_m: 0.04
+  max_incidence_deg: 55.0  # beyond this the field projection is too weak
+  probe_capacity: 4        # female flowers serviceable per pollen collection
+
+# --------------------------------------------------------------------------- #
+# Adaptive electrostatic controller (Sec. III-E / III-F)
+# --------------------------------------------------------------------------- #
+electrostatic:
+  enabled: true
+  probe_tip_radius_m: 0.003
+  reference:
+    voltage_kv: 6.0        # nominal operating point, calibrated empirically
+    standoff_m: 0.04
+    humidity_pct: 55.0
+    exposure_ms: 350.0
+  limits:
+    voltage_kv: [1.5, 12.0]
+    exposure_ms: [80.0, 1500.0]
+    # The binding safety limit is the field at the PROBE TIP, which governs
+    # corona onset - not the much weaker field out at the flower. corona_margin
+    # is the fraction of the Peek's-law inception field the tip may reach;
+    # staying well below onset leaves room for an electrode that has roughened
+    # or picked up debris in the field, since those ionise earlier than a clean
+    # one. max_tip_field is an absolute backstop on top of that.
+    corona_margin: 0.55
+    max_tip_field_kv_per_m: 4000.0
+    min_standoff_m: 0.015
+    # Advisory only: below this the command is safe but too weak to move pollen.
+    # Reported on the command so a mis-set reference point is visible during
+    # calibration rather than showing up as unexplained transfer failures.
+    min_useful_target_field_kv_per_m: 8.0
+  gains:
+    # Distance: field from a small spherical probe falls as 1/d^2, so voltage is
+    # raised with distance to hold the surface field roughly constant. The
+    # exponent is left tunable because a real probe is neither a point nor a
+    # plane, and calibration will land somewhere between the two.
+    distance_exponent: 1.6
+    # Humidity: charge on the pollen exine bleeds away through surface
+    # conduction, which climbs sharply above roughly 60% RH. A logistic term
+    # boosts drive as RH rises rather than compensating linearly.
+    humidity_midpoint: 68.0
+    humidity_steepness: 0.09
+    humidity_max_boost: 0.55
+    # Orientation: only the component of the field normal to the corolla face
+    # does useful work, so drive is raised as cos(incidence) falls. Floored to
+    # avoid a singularity at grazing incidence.
+    incidence_min_cos: 0.35
+    incidence_gain: 0.8
+    # Pollen availability: a sparse anther needs a longer dwell to strip a
+    # useful dose; a loaded one needs less.
+    pollen_exposure_gain: 0.9
+    pollen_voltage_gain: 0.25
+  deposit:
+    # Deposition reverses/reduces the probe charge so grains release onto the
+    # stigma; it runs at a lower field than collection to protect the pistil.
+    voltage_scale: 0.65
+    exposure_scale: 0.8
+    discharge_delay_ms: 60.0
+
+# --------------------------------------------------------------------------- #
+# Outcome verification (Sec. III-G)
+# --------------------------------------------------------------------------- #
+verification:
+  enabled: true
+  min_pollen_drop: 0.08       # anther should read measurably emptier after collection
+  min_stigma_gain: 0.05       # stigma should read measurably more pollinated after deposit
+  settle_frames: 3
+
+# --------------------------------------------------------------------------- #
+# Runtime
+# --------------------------------------------------------------------------- #
+runtime:
+  device: cpu
+  torch_threads: 0            # 0 = leave PyTorch's default
+  detect_every_n_frames: 1    # raise on slow hardware; tracking bridges the gap
+  max_flowers_per_frame: 12
+  warn_latency_ms: 800
+
+telemetry:
+  source: mock                # mock | serial | mqtt
+  serial:
+    port: /dev/ttyUSB0
+    baud: 115200
+  mqtt:
+    host: localhost
+    port: 1883
+    topic: rover/telemetry
+  mock:
+    humidity: 55.0
+    temperature_c: 26.0

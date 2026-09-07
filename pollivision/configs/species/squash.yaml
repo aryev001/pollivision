@@ -1,0 +1,16 @@
+# Cucurbita pepo - summer squash / zucchini.
+species:
+  name: squash
+  corolla_diameter_m: 0.085
+  anther_diameter_m: 0.017
+  ovary_length_m: 0.055
+  standoff_range_m: [0.020, 0.075]
+detector:
+  prompts:
+    flower:
+      - a large yellow zucchini flower
+      - an open yellow squash blossom
+electrostatic:
+  reference:
+    voltage_kv: 6.0
+    standoff_m: 0.040

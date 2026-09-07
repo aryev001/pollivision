@@ -1,0 +1,24 @@
+# Citrullus lanatus - watermelon.
+# Small pale-yellow corolla; the pistillate ovary is a fuzzy green sphere.
+species:
+  name: watermelon
+  corolla_diameter_m: 0.025
+  anther_diameter_m: 0.006
+  ovary_length_m: 0.020
+  standoff_range_m: [0.012, 0.045]
+detector:
+  prompts:
+    flower:
+      - a small pale yellow watermelon flower
+      - a small yellow flower on a watermelon vine
+perception:
+  quality:
+    min_box_px: 16
+  sex:
+    morphology:
+      min_width_ratio: 0.35
+      hue_range: [30, 100]
+electrostatic:
+  reference:
+    voltage_kv: 4.0
+    standoff_m: 0.022

@@ -1,0 +1,27 @@
+# Cucurbita pepo / maxima - pumpkin.
+# Large, deeply lobed yellow-orange corolla; strongly monoecious with an
+# unmistakable inferior ovary on pistillate flowers.
+species:
+  name: pumpkin
+  corolla_diameter_m: 0.105
+  anther_diameter_m: 0.020
+  ovary_length_m: 0.050
+  standoff_range_m: [0.025, 0.085]
+detector:
+  prompts:
+    flower:
+      - a large yellow orange pumpkin blossom
+      - a big open yellow squash flower on a vine
+      - a wide yellow trumpet shaped flower near the ground
+perception:
+  quality:
+    # Pumpkin corollas are the most deeply lobed of the cucurbits handled here.
+    petal_lobe_allowance: 0.20
+  sex:
+    morphology:
+      min_width_ratio: 0.25
+      max_width_ratio: 0.95
+electrostatic:
+  reference:
+    voltage_kv: 6.5
+    standoff_m: 0.045

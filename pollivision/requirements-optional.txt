@@ -1,0 +1,15 @@
+# Optional extras. None of these are needed for the default pipeline.
+
+# Serial / MQTT telemetry transports (mock telemetry needs neither).
+pyserial>=3.5
+paho-mqtt>=1.6
+
+# OWLv2 detector backend, for stronger zero-shot recall during offline
+# auto-labelling. Pulls weights from a model hub.
+transformers>=4.40
+
+# Monocular depth (MiDaS). Only needed if geometry.depth.midas.enabled is true.
+timm>=0.9
+
+# Development.
+pytest>=7.0

@@ -1,0 +1,14 @@
+# Core runtime. Everything here is CPU-only and installs from PyPI.
+numpy>=1.24
+opencv-python-headless>=4.8
+PyYAML>=6.0
+torch>=2.0
+torchvision>=0.15
+ultralytics>=8.3.0
+Pillow>=10.0
+
+# Text tokenizer and architecture for the open-vocabulary text encoder and the
+# vision-language cue model. Both are GitHub-hosted, which keeps the whole
+# default stack reachable on networks that block the usual model hubs.
+clip @ git+https://github.com/ultralytics/CLIP.git
+mobileclip @ git+https://github.com/ultralytics/mobileclip.git

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pollivision"
+version = "1.0.0"
+description = "Perception and adaptive control for a vision-guided electrostatic pollination rover"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python-headless>=4.8",
+    "PyYAML>=6.0",
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "ultralytics>=8.3.0",
+    "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+telemetry = ["pyserial>=3.5", "paho-mqtt>=1.6"]
+hub = ["transformers>=4.40"]
+depth = ["timm>=0.9"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+pollivision = "pollivision.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["pollivision*"]
+
+[tool.setuptools.package-data]
+pollivision = ["../configs/*.yaml", "../configs/species/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]

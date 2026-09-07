@@ -1,0 +1,23 @@
+# Cucumis melo - muskmelon / cantaloupe.
+# Andromonoecious in many cultivars: perfect flowers carry both anthers and a
+# stigma, so the sex head will legitimately report intermediate probabilities.
+species:
+  name: muskmelon
+  corolla_diameter_m: 0.022
+  anther_diameter_m: 0.006
+  ovary_length_m: 0.018
+  standoff_range_m: [0.012, 0.040]
+detector:
+  prompts:
+    flower:
+      - a small yellow muskmelon flower
+      - a small yellow melon blossom on a vine
+perception:
+  quality:
+    min_box_px: 16
+  sex:
+    min_confidence: 0.35
+electrostatic:
+  reference:
+    voltage_kv: 4.0
+    standoff_m: 0.020

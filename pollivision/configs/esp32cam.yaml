@@ -1,0 +1,61 @@
+# Overlay for an AI-Thinker ESP32-CAM (OV2640) acting as the rover's eye.
+#
+# The OV2640 has no depth channel, a rolling shutter, aggressive JPEG
+# compression and no reliable calibration, so this profile: falls back to
+# size-prior ranging, loosens sharpness expectations, and slows the detection
+# cadence to match the achievable stream rate.
+
+camera:
+  name: esp32cam-ov2640
+  width: 800          # SVGA is the best quality/latency trade-off on this part
+  height: 600
+  # OV2640 with the stock lens is roughly 60-70 deg horizontal. Run
+  # `pollivision calibrate` with a checkerboard to replace this estimate.
+  hfov_deg: 65.0
+
+extrinsics:
+  pitch_deg: -22.0
+  offset_m: [0.30, 0.0, 0.22]
+
+geometry:
+  depth:
+    mode: size        # no depth channel exists on this sensor
+    midas:
+      enabled: false  # too slow for a live loop on typical rover compute
+  ranging:
+    # A wider size prior: an uncalibrated FOV inflates the ranging uncertainty.
+    size_sigma_frac: 0.38
+
+perception:
+  quality:
+    # JPEG ringing depresses Laplacian energy, so a strict sharpness gate would
+    # throw away perfectly usable frames.
+    min_sharpness: 0.07
+    min_score: 0.18
+  pollen:
+    # The OV2640's auto white balance drifts; widen the anther hue gate and
+    # lean harder on the relative petal-baseline comparison.
+    hue_range: [12, 46]
+    min_saturation: 95
+    saturation_margin: 20
+
+detector:
+  backends:
+    - name: yoloe
+      weights: yoloe-11s-seg
+      enabled: true
+      weight: 1.0
+      conf: 0.10
+      iou: 0.60
+      imgsz: 512        # smaller input keeps the loop responsive
+      max_det: 40
+
+runtime:
+  detect_every_n_frames: 2   # tracking bridges the skipped frames
+  warn_latency_ms: 1200
+
+source:
+  kind: esp32
+  url: http://192.168.4.1:81/stream
+  reconnect_delay_s: 2.0
+  max_queue: 2               # drop stale frames rather than building latency
