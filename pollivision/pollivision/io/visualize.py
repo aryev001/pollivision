@@ -181,3 +181,61 @@ def draw_breakdown(canvas: np.ndarray, observation: FlowerObservation,
     for index, line in enumerate(lines):
         _label(canvas, line, (x, y + 16 * index), COLOR_TEXT, scale=0.42)
     return canvas
+
+
+def draw_hud(canvas: np.ndarray, lines: list[str],
+             origin: tuple[int, int] = (8, 0), scale: float = 0.42,
+             anchor: str = "bottom") -> np.ndarray:
+    """Draw a translucent block of status text, anchored top or bottom.
+
+    The top-of-frame panel from :func:`draw_frame` reports what the *pipeline*
+    saw. This reports what the *loop* is doing - capture rate, inference rate,
+    how stale the overlay is - which during a live session is the half that
+    tells you whether to trust what you are looking at.
+    """
+    if not lines:
+        return canvas
+
+    line_height = int(18 * (scale / 0.42))
+    block = line_height * len(lines) + 10
+    height, width = canvas.shape[:2]
+    top = height - block if anchor == "bottom" else origin[1]
+    top = max(0, min(top, height - 1))
+    bottom = min(height, top + block)
+
+    strip = canvas[top:bottom, 0:width]
+    shade = np.full_like(strip, COLOR_PANEL)
+    cv2.addWeighted(shade, 0.65, strip, 0.35, 0.0, strip)
+
+    for index, line in enumerate(lines):
+        _label(canvas, line, (origin[0], top + line_height * (index + 1) - 4),
+               COLOR_TEXT, scale=scale)
+    return canvas
+
+
+def draw_centered_notice(canvas: np.ndarray, lines: list[str],
+                         scale: float = 0.55) -> np.ndarray:
+    """Draw a boxed message in the middle of the frame (help, paused, errors)."""
+    if not lines:
+        return canvas
+    height, width = canvas.shape[:2]
+    line_height = int(26 * (scale / 0.55))
+    text_width = max(
+        cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0][0]
+        for line in lines
+    )
+    box_w = min(width - 20, text_width + 40)
+    box_h = line_height * len(lines) + 30
+    x1 = max(10, (width - box_w) // 2)
+    y1 = max(10, (height - box_h) // 2)
+    x2, y2 = min(width - 10, x1 + box_w), min(height - 10, y1 + box_h)
+
+    panel = canvas[y1:y2, x1:x2]
+    shade = np.full_like(panel, COLOR_PANEL)
+    cv2.addWeighted(shade, 0.85, panel, 0.15, 0.0, panel)
+    cv2.rectangle(canvas, (x1, y1), (x2, y2), COLOR_TEXT, 1)
+
+    for index, line in enumerate(lines):
+        _label(canvas, line, (x1 + 20, y1 + 26 + line_height * index),
+               COLOR_TEXT, scale=scale)
+    return canvas

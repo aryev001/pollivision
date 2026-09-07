@@ -1,0 +1,95 @@
+{
+  // Press F5 to run the highlighted configuration. "PolliVision: webcam (live)"
+  // is the default and needs nothing but the dependencies installed - run the
+  // "PolliVision: install" task once first (Terminal > Run Task).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "PolliVision: webcam (live)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pollivision.cli",
+      "args": ["webcam"],
+      "cwd": "${workspaceFolder}/pollivision",
+      "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "PolliVision: webcam (fast, no vision-language cues)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pollivision.cli",
+      "args": ["webcam", "--fast", "--mirror"],
+      "cwd": "${workspaceFolder}/pollivision",
+      "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "PolliVision: webcam + mission loop",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pollivision.cli",
+      "args": ["webcam", "--mission", "--species", "pumpkin"],
+      "cwd": "${workspaceFolder}/pollivision",
+      "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "PolliVision: list cameras",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pollivision.cli",
+      "args": ["webcam", "--list-cameras"],
+      "cwd": "${workspaceFolder}/pollivision",
+      "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "PolliVision: webcam (custom prompts)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pollivision.cli",
+      // Point the open-vocabulary detector at something you can hold up to the
+      // camera, to confirm the whole path works before you have flowers.
+      "args": ["webcam", "--fast", "--mirror",
+               "--prompt", "a person's face",
+               "--prompt", "a coffee mug",
+               "--prompt", "a mobile phone"],
+      "cwd": "${workspaceFolder}/pollivision",
+      "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "PolliVision: selftest",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pollivision.cli",
+      "args": ["selftest"],
+      "cwd": "${workspaceFolder}/pollivision",
+      "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "PolliVision: bench",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pollivision.cli",
+      "args": ["bench", "--webcam", "--iterations", "5"],
+      "cwd": "${workspaceFolder}/pollivision",
+      "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "PolliVision: current file",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}/pollivision",
+      "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+      "console": "integratedTerminal"
+    }
+  ]
+}

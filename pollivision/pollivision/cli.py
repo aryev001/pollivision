@@ -1,6 +1,7 @@
 """Command-line interface.
 
     pollivision fetch      - prime the weight cache for offline field use
+    pollivision webcam     - run live on this machine's own camera
     pollivision detect     - run perception over images/video and report
     pollivision run        - run the full closed-loop mission
     pollivision stream     - view a live ESP32-CAM feed with annotations
@@ -26,12 +27,18 @@ from .logging_utils import get_logger
 LOGGER = get_logger("pollivision.cli")
 
 
-def _add_common(parser: argparse.ArgumentParser) -> None:
+def _add_common(parser: argparse.ArgumentParser,
+                camera_overlays: bool = True) -> None:
     parser.add_argument("--config", default="default", help="base config name or path")
     parser.add_argument("--species", default=None,
                         help="species profile: pumpkin, cucumber, squash, watermelon, muskmelon")
-    parser.add_argument("--esp32", action="store_true",
-                        help="apply the ESP32-CAM tuning overlay")
+    if camera_overlays:
+        # The `webcam` command applies its own overlay unconditionally, so
+        # offering the flags there would only invite contradictory combinations.
+        parser.add_argument("--esp32", action="store_true",
+                            help="apply the ESP32-CAM tuning overlay")
+        parser.add_argument("--webcam", action="store_true",
+                            help="apply the laptop/USB webcam tuning overlay")
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
                         help="config overrides, e.g. --set electrostatic.reference.voltage_kv=7")
     parser.add_argument("--device", default=None, help="torch device (default: cpu)")
@@ -43,6 +50,8 @@ def _build_config(args):
         overlays.append(f"species/{args.species}")
     if getattr(args, "esp32", False):
         overlays.append("esp32cam")
+    if getattr(args, "webcam", False):
+        overlays.append("webcam")
     overrides = parse_overrides(args.set) if args.set else None
     cfg = load_config(args.config, overlays, overrides)
     if args.device:
@@ -85,6 +94,14 @@ def cmd_detect(args) -> int:
     if output_dir:
         output_dir.mkdir(parents=True, exist_ok=True)
 
+    show = getattr(args, "show", False)
+    if show:
+        from .io.webcam import gui_available, gui_hint
+
+        if not gui_available():
+            print(gui_hint(), file=sys.stderr)
+            show = False
+
     records = []
     processed = 0
     with open_source(args.source, cfg, max_frames=args.max_frames) as source:
@@ -102,14 +119,22 @@ def cmd_detect(args) -> int:
 
             records.append(_record(frame.name, result))
 
-            if output_dir:
+            annotated = None
+            if output_dir or show:
                 annotated = draw_frame(frame.image, result)
+            if output_dir:
                 cv2.imwrite(str(output_dir / f"{Path(frame.name).stem}_annotated.jpg"),
                             annotated)
+            if show:
+                cv2.imshow("PolliVision - detect", annotated)
+                if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
+                    break
 
             if args.max_frames and processed >= args.max_frames:
                 break
 
+    if show:
+        cv2.destroyAllWindows()
     if args.json:
         Path(args.json).write_text(json.dumps(records, indent=2), encoding="utf-8")
         print(f"\nWrote {len(records)} frame records to {args.json}")
@@ -194,6 +219,119 @@ def cmd_run(args) -> int:
     return 0
 
 
+def cmd_webcam(args) -> int:
+    """Run the perception stack live on this machine's own camera.
+
+    This is the path to run first after cloning: it needs no rover, no
+    ESP32-CAM and no network beyond the one-time weight download, so it is the
+    quickest way to see whether the stack works on your hardware and how fast.
+    """
+    # Imported before the heavy ones, so that --list-cameras - which is what
+    # someone runs while still sorting out their install - needs only OpenCV.
+    from .io.webcam import list_cameras, permission_hint
+
+    if args.list_cameras:
+        cameras = list_cameras(args.probe_depth)
+        if not cameras:
+            print("No cameras responded.\n" + permission_hint())
+            return 2
+        print(f"Found {len(cameras)} camera(s):")
+        for info in cameras:
+            print(f"  {info.describe()}")
+        print("\nUse the index with --camera, e.g. "
+              f"`pollivision webcam --camera {cameras[0].index}`")
+        return 0
+
+    # The webcam overlay is what makes this command work out of the box, so it
+    # is always applied here rather than relying on the operator adding
+    # --webcam. An explicit --config still wins for anything it sets.
+    args.webcam = True
+    cfg = _build_config(args)
+    _apply_live_overrides(cfg, args)
+
+    from .runtime.live import LiveSession
+    from .runtime.pipeline import PerceptionPipeline
+
+    print("Loading models (first run downloads ~600 MB; later runs use the cache)...")
+    pipeline = PerceptionPipeline(cfg)
+    backends = [b.name for b in pipeline.detector.backends]
+    print(f"Detector backends: {backends}; "
+          f"vision-language cues: {'on' if pipeline.vlm is not None else 'off'}")
+    pipeline.warmup((int(cfg.get("camera.height", 480)),
+                     int(cfg.get("camera.width", 640))))
+
+    mission = telemetry = None
+    if args.mission:
+        from .io.telemetry import build_telemetry
+        from .runtime.mission import MissionController
+
+        mission = MissionController(cfg)
+        telemetry = build_telemetry(cfg)
+        print("Mission loop enabled: target selection and electrostatic "
+              "commands are computed and displayed, but nothing is actuated.")
+
+    records: list[dict] = []
+    on_result = None
+    if args.json:
+        counter = {"n": 0}
+
+        def on_result(result):  # noqa: ANN001 - CLI-local callback
+            counter["n"] += 1
+            records.append(_record(f"cam-{counter['n']:06d}", result))
+
+    session = LiveSession(
+        cfg, pipeline,
+        device=args.camera,
+        width=args.width or cfg.get("source.width"),
+        height=args.height or cfg.get("source.height"),
+        fps=args.fps or cfg.get("source.fps"),
+        mirror=args.mirror or bool(cfg.get("source.mirror", False)),
+        window=not args.no_window,
+        mission=mission,
+        telemetry=telemetry,
+        record=args.record,
+        snapshot_dir=args.snapshot_dir,
+        max_frames=args.max_frames,
+        sync=args.sync,
+        on_result=on_result,
+    )
+    try:
+        code = session.run()
+    finally:
+        if telemetry is not None:
+            telemetry.close()
+
+    if args.json and records:
+        Path(args.json).write_text(json.dumps(records, indent=2), encoding="utf-8")
+        print(f"  wrote {len(records)} frame records to {args.json}")
+    return code
+
+
+def _apply_live_overrides(cfg, args) -> None:
+    """Turn the live-session convenience flags into config settings."""
+    if getattr(args, "fast", False):
+        # Two changes buy roughly an order of magnitude on a laptop CPU: drop
+        # the vision-language cues (the dominant cost, several hundred ms per
+        # accepted flower) and shrink the detector's input. Accuracy falls -
+        # the sex cue in particular is left with geometry alone, which without
+        # depth means it abstains more often - so this is for checking that the
+        # camera path works, not for judging the stack.
+        cfg.set("vlm.enabled", False)
+        backends = cfg.get("detector.backends", []) or []
+        for backend in backends:
+            if backend.get("enabled") and backend.get("name") == "yoloe":
+                backend["imgsz"] = min(int(backend.get("imgsz", 640)), 448)
+    if getattr(args, "prompt", None):
+        # Replace the crop prompt bank wholesale. Useful for confirming the
+        # open-vocabulary detector is really running on your camera by pointing
+        # it at something you can hold, before you have flowers to point it at.
+        cfg.set("detector.prompts.flower", list(args.prompt))
+        cfg.set("perception.quality.require_receptive", False)
+    if getattr(args, "conf", None) is not None:
+        for backend in cfg.get("detector.backends", []) or []:
+            backend["conf"] = float(args.conf)
+
+
 def cmd_stream(args) -> int:
     import cv2
 
@@ -206,6 +344,14 @@ def cmd_stream(args) -> int:
         pipeline = PerceptionPipeline(cfg)
     else:
         pipeline = None
+
+    show = args.show
+    if show:
+        from .io.webcam import gui_available, gui_hint
+
+        if not gui_available():
+            print(gui_hint(), file=sys.stderr)
+            show = False
 
     url = args.url or cfg.get("source.url", "http://192.168.4.1:81/stream")
     print(f"Connecting to {url} (ctrl-c to stop)")
@@ -226,7 +372,7 @@ def cmd_stream(args) -> int:
                       f"age {frame.age_s * 1000:.0f} ms, "
                       f"dropped {stream.dropped_frames}    ", end="", flush=True)
 
-                if args.show:
+                if show:
                     cv2.imshow("PolliVision - ESP32-CAM", canvas)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
@@ -236,7 +382,7 @@ def cmd_stream(args) -> int:
         except KeyboardInterrupt:
             print("\nstopped")
         finally:
-            if args.show:
+            if show:
                 cv2.destroyAllWindows()
     return 0
 
@@ -519,7 +665,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("detect", help="run perception over images or video")
     _add_common(p)
-    p.add_argument("source", help="image, directory, video, camera index or stream URL")
+    p.add_argument("source",
+                   help="image, directory, video, camera index (0), 'webcam', "
+                        "or an MJPEG stream URL")
+    p.add_argument("--show", action="store_true",
+                   help="open a preview window (for live sources use `webcam` "
+                        "instead: it keeps the preview smooth while inference runs)")
     p.add_argument("--output", default=None, help="directory for annotated frames")
     p.add_argument("--json", default=None, help="write per-frame results to this JSON file")
     p.add_argument("--max-frames", type=int, default=None)
@@ -535,6 +686,40 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--require-pose-feedback", action="store_true",
                    help="wait for real probe-pose feedback instead of assuming it")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("webcam", help="run live on this machine's own camera")
+    _add_common(p, camera_overlays=False)
+    p.add_argument("--camera", "-c", default=0,
+                   help="camera index (0 is usually the built-in one) or device path")
+    p.add_argument("--list-cameras", action="store_true",
+                   help="list the cameras this machine can open, then exit")
+    p.add_argument("--probe-depth", type=int, default=6,
+                   help="how many camera indices --list-cameras probes")
+    p.add_argument("--width", type=int, default=None, help="requested capture width")
+    p.add_argument("--height", type=int, default=None, help="requested capture height")
+    p.add_argument("--fps", type=float, default=None, help="requested capture rate")
+    p.add_argument("--mirror", action="store_true",
+                   help="flip the preview horizontally, which is easier to aim")
+    p.add_argument("--no-window", action="store_true",
+                   help="run headless and print status instead of opening a window")
+    p.add_argument("--sync", action="store_true",
+                   help="show each analysed frame with its own overlay (choppier, "
+                        "but overlay and image always agree)")
+    p.add_argument("--fast", action="store_true",
+                   help="drop the vision-language cues and shrink the detector "
+                        "input for a much higher frame rate at lower accuracy")
+    p.add_argument("--mission", action="store_true",
+                   help="also run the closed-loop mission and show its commands")
+    p.add_argument("--prompt", action="append", default=None, metavar="TEXT",
+                   help="replace the flower prompts with your own text (repeatable)")
+    p.add_argument("--conf", type=float, default=None,
+                   help="override the detector confidence threshold")
+    p.add_argument("--record", default=None, help="write the annotated preview to this mp4")
+    p.add_argument("--snapshot-dir", default=None,
+                   help="where the 's' key saves annotated stills (default: snapshots/)")
+    p.add_argument("--json", default=None, help="write per-frame results to this JSON file")
+    p.add_argument("--max-frames", type=int, default=None)
+    p.set_defaults(func=cmd_webcam)
 
     p = sub.add_parser("stream", help="view an annotated live ESP32-CAM feed")
     _add_common(p)

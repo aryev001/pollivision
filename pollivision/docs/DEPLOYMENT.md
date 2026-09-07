@@ -125,6 +125,23 @@ command to fix it, instead of stalling on a download attempt in a field with no
 signal. Set `POLLIVISION_HOME` to relocate the cache (a read-only or
 network-mounted cache shared across several rovers works fine).
 
+### OpenCV on a headless rover
+
+The default dependency is `opencv-python`, because the development path most
+people take is `pollivision webcam` on a laptop, and the preview window needs a
+HighGUI backend. A rover with no display does not, and the headless wheel is
+noticeably smaller and pulls in no X11 or GTK libraries:
+
+```bash
+pip uninstall -y opencv-python
+pip install opencv-python-headless      # or: pip install '.[headless]'
+```
+
+The two wheels provide the same `cv2` module, so **never install both** — which
+one wins is undefined. Every command that would open a window
+(`webcam`, `stream --show`, `detect --show`) detects a headless build and
+degrades to printing status rather than raising.
+
 ---
 
 ## Performance

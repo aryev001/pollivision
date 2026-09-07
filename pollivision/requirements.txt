@@ -1,6 +1,11 @@
 # Core runtime. Everything here is CPU-only and installs from PyPI.
 numpy>=1.24
-opencv-python-headless>=4.8
+# opencv-python, NOT opencv-python-headless: the headless wheel is built with no
+# HighGUI backend, so cv2.imshow raises on it and `pollivision webcam` cannot
+# open a preview window. On a genuinely headless rover, swap it back:
+#     pip uninstall -y opencv-python && pip install opencv-python-headless
+# and pass --no-window. The two wheels conflict; never install both.
+opencv-python>=4.8
 PyYAML>=6.0
 torch>=2.0
 torchvision>=0.15
