@@ -11,5 +11,11 @@ transformers>=4.40
 # Monocular depth (MiDaS). Only needed if geometry.depth.midas.enabled is true.
 timm>=0.9
 
+# Headless deployment (a rover with no display). Replaces opencv-python rather
+# than adding to it - installing both leaves an ambiguous cv2 on the path.
+#   pip uninstall -y opencv-python
+#   pip install opencv-python-headless
+# opencv-python-headless>=4.8
+
 # Development.
 pytest>=7.0

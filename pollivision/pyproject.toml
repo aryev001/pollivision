@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.24",
-    "opencv-python-headless>=4.8",
+    "opencv-python>=4.8",
     "PyYAML>=6.0",
     "torch>=2.0",
     "torchvision>=0.15",
@@ -20,6 +20,8 @@ dependencies = [
 
 [project.optional-dependencies]
 telemetry = ["pyserial>=3.5", "paho-mqtt>=1.6"]
+# For a headless rover, where a preview window is impossible anyway.
+headless = ["opencv-python-headless>=4.8"]
 hub = ["transformers>=4.40"]
 depth = ["timm>=0.9"]
 dev = ["pytest>=7.0"]

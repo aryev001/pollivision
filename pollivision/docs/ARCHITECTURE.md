@@ -145,6 +145,35 @@ worth trusting, so its single-frame estimate is left alone rather than being
 
 ---
 
+## Frame sources, and the two kinds of them
+
+`io/sources.py` presents one iterator interface over every input — a still, a
+directory, a video file, a laptop or USB webcam (`io/webcam.py`), the
+ESP32-CAM's MJPEG stream (`io/esp32.py`) — so that no stage below it branches on
+where a frame came from. But the sources divide cleanly in two, and the division
+is not cosmetic:
+
+**Recorded sources must yield every frame, in order.** Skipping one changes the
+result of an evaluation run.
+
+**Live sources must yield the newest frame and discard the rest.** Both of them
+therefore read on their own thread behind a depth-one queue. The reasoning is
+the same in both cases and worth stating plainly: `VideoCapture.read()` and an
+MJPEG socket both hand back the *oldest* undelivered frame. A pipeline slower
+than its camera therefore falls further behind every frame it processes, without
+bound, and ends up driving a high-voltage probe toward where a plant was several
+seconds ago. Throughput is sacrificed for freshness deliberately, because a
+frame that can no longer be acted on has no value to a control loop.
+
+`runtime/live.py` extends that reasoning one stage further, splitting capture,
+inference and display onto three threads because they run at three genuinely
+different rates — roughly 30 FPS, 1–3 FPS and 30 FPS on a laptop. The preview
+composites the newest result onto the newest frame, so the overlay trails the
+video by about one inference period; the session reports that lag on screen
+rather than hiding it, and `--sync` swaps the trade the other way.
+
+---
+
 ## Extension points
 
 - **New species** — add `configs/species/<name>.yaml`. Corolla diameter is the

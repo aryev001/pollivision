@@ -32,6 +32,19 @@ Capture straight from the rover's camera:
 pollivision stream --esp32 --no-model --save-dir validation/
 ```
 
+Or, if the rover is not built yet, from the machine's own camera — press
+<kbd>s</kbd> to save each still, and prefer `--sync` so the saved overlay
+matches the frame it was computed on:
+
+```bash
+pollivision webcam --sync --snapshot-dir validation/
+```
+
+Be aware of what changes when you do: a laptop camera is a better sensor held at
+a different height, so a set captured this way will flatter the system relative
+to what the rover's OV2640 will see at 25 cm off the ground. It is useful for
+building and debugging the labelling pipeline, not for the number you quote.
+
 ## 2. Label it
 
 Ground truth per flower: a box, sex (`male`/`female`), anthesis stage, and

@@ -1,0 +1,70 @@
+# Laptop / USB webcam overlay.
+#
+#   pollivision webcam                      # applies this automatically
+#   pollivision detect 0 --webcam --show    # or apply it by hand
+#
+# What a laptop camera changes relative to the rover's ESP32-CAM: the sensor is
+# much better, there is no network in the path, there is still no depth channel,
+# and - most importantly - the camera is held by a person rather than bolted to
+# a chassis at a known pose.
+
+meta:
+  name: pollivision-webcam
+  description: Live perception on the machine's own camera, for bring-up and demos.
+
+source:
+  kind: webcam
+  device: 0            # index; `pollivision webcam --list-cameras` shows what exists
+  width: 1280
+  height: 720
+  fps: 30
+  # The first frames off a laptop camera are captured while auto-exposure and
+  # white balance are still hunting. Feeding those to the quality gate produces
+  # a burst of spurious "bad exposure" rejections at every start-up.
+  warmup_frames: 8
+  mirror: false        # true gives a mirror-image preview, which is easier to aim
+
+camera:
+  name: laptop-webcam
+  width: 1280
+  height: 720
+  # A typical laptop camera is 60-70 deg horizontal. This only sets the fallback
+  # focal length; run `pollivision calibrate` for ranging you can trust.
+  hfov_deg: 65.0
+  fx: null
+  fy: null
+  cx: null
+  cy: null
+
+# A handheld camera has no rover behind it, so the extrinsics are the identity:
+# "rover frame" and "camera frame" coincide and reported positions are relative
+# to the lens. Set these properly once the camera is mounted on something.
+extrinsics:
+  pitch_deg: 0.0
+  yaw_deg: 0.0
+  roll_deg: 0.0
+  offset_m: [0.0, 0.0, 0.0]
+
+geometry:
+  depth:
+    # No depth channel on a webcam, so range comes from apparent corolla size.
+    # This is also why the ovary-morphology sex cue abstains here and the
+    # decision rests on the vision-language cue - see the README.
+    mode: size
+
+runtime:
+  device: cpu
+  # The live loop already skips whatever arrives mid-inference, so frame
+  # skipping is handled there rather than here; leaving this above 1 would make
+  # the session report stale results as though they were new.
+  detect_every_n_frames: 1
+  # A laptop CPU running the vision-language cues over several flowers is
+  # legitimately slow. The rover's 800 ms budget would warn on every frame.
+  warn_latency_ms: 2000
+  max_flowers_per_frame: 8
+
+telemetry:
+  # Nothing is wired to a laptop, so humidity and temperature are stubbed. The
+  # electrostatic numbers shown in --mission mode are therefore illustrative:
+  # they respond to what the camera sees, not to real conditions.
+  source: mock

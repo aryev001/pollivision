@@ -19,13 +19,28 @@ a CPU.
 
 ## Quick start
 
+The importable package lives in `pollivision/`, one level below the repository
+root.
+
 ```bash
+git clone <this repo> && cd pollivision/pollivision
+
 pip install -r requirements.txt
 pip install -e .
 
 pollivision fetch                 # ~600 MB into ~/.cache/pollivision, once
 pollivision selftest              # verify the install end to end
 
+pollivision webcam                # live on this machine's own camera
+```
+
+`pollivision webcam` is the one to run first: it needs no rover and no
+ESP32-CAM, and it shows in a few seconds whether the stack works on your
+hardware and how fast. See [`docs/WEBCAM.md`](docs/WEBCAM.md).
+
+Recorded input and the closed loop:
+
+```bash
 pollivision detect photos/ --species pumpkin --output annotated/
 pollivision run video.mp4 --species pumpkin --video-out mission.mp4
 ```
@@ -40,6 +55,40 @@ pollivision run config --esp32 --species cucumber
 Everything after the first `fetch` works offline. Set `POLLIVISION_OFFLINE=1`
 to make that guarantee explicit and fail loudly rather than stalling on a
 download in the field.
+
+---
+
+## Live on your own camera
+
+```bash
+pollivision webcam                     # built-in camera, full accuracy, 1-3 FPS
+pollivision webcam --fast --mirror     # 10-20 FPS, geometric cues only
+pollivision webcam --list-cameras      # which indices actually work here
+pollivision webcam --mission           # also run the closed perceive-plan-act loop
+```
+
+**In VS Code:** open this repository, run *Terminal → Run Task →
+`PolliVision: install`* once, then press <kbd>F5</kbd> and choose
+**PolliVision: webcam (live)**. Or, with nothing installed at all,
+`python run_webcam.py` from the repository root.
+
+Capture, inference and display run on separate threads, because they run at
+genuinely different rates: the camera delivers 30 FPS, the full stack completes
+1-3 frames per second on a laptop CPU, and the preview must stay smooth
+throughout. The session composites the newest available result onto the newest
+available frame and drops whatever arrived while inference was busy — a frame
+a control loop can no longer act on has no value to it. The consequence is that
+the overlay trails the video by about one inference period; the on-screen HUD
+reports that lag in milliseconds, and `--sync` trades the smooth preview for an
+overlay that always matches the pixels under it.
+
+Two limits are worth knowing before you judge what you see. A webcam has **no
+depth channel**, so the ovary-morphology sex cue abstains and the decision rests
+on the vision-language cue alone (the README's accuracy table quantifies the
+cost). And its **intrinsics are uncalibrated**, so range and incidence come from
+an assumed 65° field of view — run `pollivision calibrate` if those numbers
+matter. Both, and the troubleshooting for cameras that will not open, are in
+[`docs/WEBCAM.md`](docs/WEBCAM.md).
 
 ---
 
@@ -180,7 +229,7 @@ describes.
 
 Being precise about this, because it determines what you can rely on.
 
-**Verified here (113 passing tests, `pytest tests/`):**
+**Verified here (154 passing tests, `pytest tests/`):**
 
 - Ranging is exactly tilt-invariant. Using the fitted ellipse's major axis gives
   0.0 % error across tilt and roll, where a bounding-box-side estimator drifts to
@@ -197,6 +246,10 @@ Being precise about this, because it determines what you can rely on.
   re-acquire a flower by position after a track is lost, always verify.
 - The open-vocabulary detector and vision-language model were confirmed working
   on real photographs.
+- The live-camera path: a slow consumer receives the newest frame rather than a
+  queued backlog, warm-up frames are discarded, a camera that opens but never
+  delivers is rejected in favour of the next backend, the preview keeps running
+  when the pipeline raises, and display rate stays decoupled from inference rate.
 
 **Sex classification, measured on synthetic renders with exact ground truth:**
 
@@ -247,6 +300,7 @@ python tools/autolabel.py field_images/ --output dataset --teacher yoloe-11l-seg
 
 ## Documentation
 
+- [`docs/WEBCAM.md`](docs/WEBCAM.md) — running live on a laptop or USB camera
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the stages fit together and why
 - [`docs/PAPER_MAPPING.md`](docs/PAPER_MAPPING.md) — every paper claim → the code implementing it
 - [`docs/ESP32CAM.md`](docs/ESP32CAM.md) — wiring, flashing, calibration, tuning

@@ -1,0 +1,16 @@
+{
+  // The importable package lives in ./pollivision, one level below this
+  // workspace root, so both the analyser and the test runner are pointed there.
+  "python.analysis.extraPaths": ["${workspaceFolder}/pollivision"],
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["pollivision/tests"],
+  "python.testing.cwd": "${workspaceFolder}/pollivision",
+  "terminal.integrated.env.linux": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+  "terminal.integrated.env.osx": { "PYTHONPATH": "${workspaceFolder}/pollivision" },
+  "terminal.integrated.env.windows": { "PYTHONPATH": "${workspaceFolder}\\pollivision" },
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.egg-info": true
+  }
+}

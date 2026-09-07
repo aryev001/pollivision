@@ -1,0 +1,55 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "PolliVision: install",
+      "detail": "Install the CPU-only dependencies and the package itself (run once).",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pip install -r requirements.txt && ${command:python.interpreterPath} -m pip install -e .",
+      "options": { "cwd": "${workspaceFolder}/pollivision" },
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "PolliVision: fetch model weights",
+      "detail": "Download ~600 MB into ~/.cache/pollivision. Needed once, then it runs offline.",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pollivision.cli fetch",
+      "options": {
+        "cwd": "${workspaceFolder}/pollivision",
+        "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PolliVision: list cameras",
+      "detail": "Show which camera indices this machine can actually open.",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pollivision.cli webcam --list-cameras",
+      "options": {
+        "cwd": "${workspaceFolder}/pollivision",
+        "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PolliVision: run webcam",
+      "detail": "Live perception on the built-in camera. Press q in the window to stop.",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pollivision.cli webcam",
+      "options": {
+        "cwd": "${workspaceFolder}/pollivision",
+        "env": { "PYTHONPATH": "${workspaceFolder}/pollivision" }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PolliVision: tests",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pytest -q",
+      "options": { "cwd": "${workspaceFolder}/pollivision" },
+      "problemMatcher": [],
+      "group": { "kind": "test", "isDefault": true }
+    }
+  ]
+}
